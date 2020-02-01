@@ -1,0 +1,23 @@
+create group ETL_Users ;
+
+create group Report_Users ;
+
+create group Ro_Users ;
+
+create user etl1 in group ETL_Users password 'SomeP@ssw0rd';
+
+create user etl2 in group ETL_Users password 'SomeP@ssw0rd';
+
+create user etl3 in group ETL_Users password 'SomeP@ssw0rd';
+
+create user rpt1 in group Report_Users password 'SomeP@ssw0rd';
+
+create user rpt2 in group Report_Users password 'SomeP@ssw0rd';
+
+create user rpt3 in group Report_Users password 'SomeP@ssw0rd';
+
+create user rousr1 in group Ro_Users password 'SomeP@ssw0rd';
+
+create user rousr2 in group Ro_Users password 'SomeP@ssw0rd';
+
+create user rousr3 in group Ro_Users password 'SomeP@ssw0rd';

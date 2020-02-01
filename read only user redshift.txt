@@ -1,0 +1,95 @@
+You can follow the below commands to create a read-only user in Redshift. In this example, we will assume the user wants to access tables in 'public' schema without any INSERT or CREATE privileges.
+
+Run the following as a super-user. 
+
+1. create user
+
+create user reporting_usr with password 'SomeP@ssw0rd' ;
+
+ 
+
+2. create group to take permissions
+
+create group ro_group;
+
+ 
+
+3. add user to group
+
+alter group ro_group add user reporting_usr;
+
+ 
+
+4. revoke default create rights on public schema
+
+revoke create on schema public from group ro_group;
+
+ 
+
+5. grant access to schema
+
+grant usage on schema public to group ro_group;
+
+ 
+
+6. grant access to current tables in schema
+
+grant select on all tables in schema public to group ro_group;
+
+ 
+
+7. grant access to future tables in the schema
+
+alter default privileges in schema public grant select on tables to group ro_group;
+
+
+If you want to create any further read-only users, then add those users to 'ro_group' group and they will have only SELECT privileges on 'public' schema tables. 
+
+
+#### Edge Case for 'public' schema ####
+
+There is an interesting scenario about doing this in "public" schema.  Redshift is based on Postgresql, and many of the functionalities (and oddities) we have inherited form Postgres. Apparently, when a new user is created, it's automatically added to a hidden user group named "public".  -> Different from "public" schema. This is not documented in any Redshift docs but mentioned in Postgres doc: https://www.postgresql.org/docs/9.1/sql-grant.html 
+
+"The key word PUBLIC indicates that the privileges are to be granted to all roles, including those that might be created later. PUBLIC can be thought of as an implicitly defined group that always includes all roles. 
+Any particular role will have the sum of privileges granted directly to it, privileges granted to any role it is presently a member of, and privileges granted to PUBLIC"
+
+What this means is, when you created lets say the user "reporting_usr" and added  it to "ro_group", it was also added to PUBLIC which has a bunch of privileges. (again not the "public" schema). To stop users from creating tables, the trick here is to revoke CREATE privilege from PUBLIC but without the "group" keyword in front of it.  So with a super-user run this below command:
+
+# REVOKE CREATE ON SCHEMA "public" FROM public;
+
+After this, only your superuser will still have permission to CREATE table in the "public" schema. Now log back in with your read-only user and try to create a table
+
+# testdb=> CREATE TABLE TESTTABLE (id int, anotherid int );
+ERROR:  permission denied for schema public
+
+Please remember the only reason you need to do the above trick is because you are creating read only users for the "public" schema which is special given it's the default schema. If it's another schema instead of "public", let's say, "ro_schema", then the  below should be sufficient :     (Notice here you do need put the "group" keyword in front of the group name.)
+
+# REVOKE CREATE ON SCHEMA "ro_schema" FROM group "ro_group";     
+
+Lastly, as you run each step. You can use the below query to check what schema level and table level privileges are granted for each user in each user group:
+
+SELECT
+    u.usename,
+    g.groname,
+    s.schemaname,
+    s.tablename,
+    has_schema_privilege(u.usename,s.schemaname,'create') AS user_has_create_permission,
+    has_schema_privilege(u.usename,s.schemaname,'usage') AS user_has_usage_permission,
+    has_table_privilege(u.usename,s.tablename,'select') AS user_has_select_permission,
+    has_table_privilege(u.usename,s.tablename,'insert') AS user_has_insert_permission,
+    has_table_privilege(u.usename,s.tablename,'delete') AS user_has_delete_permission
+FROM
+    pg_user u, pg_group g
+CROSS JOIN
+    (SELECT DISTINCT schemaname, tablename FROM pg_tables) s
+where u.usesysid = ANY(g.grolist) and 
+g.groname='ro_group'
+and s.schemaname='public';
+
+Hope this helps. Apologies for forgetting to mention this oddity of "public" schema earlier. Let me know if you have any more questions, I'll be glad to assist further.
+
+References :
+----------------
+Two useful views for handling object dependency related errors when dropping users/usergroup:       -> both views even provide revoke commands to run
+https://github.com/awslabs/amazon-redshift-utils/blob/master/src/AdminViews/v_generate_user_grant_revoke_ddl.sql
+https://github.com/awslabs/amazon-redshift-utils/blob/master/src/AdminViews/v_find_dropuser_objs.sql

@@ -1,0 +1,26 @@
+SELECT waiting.relation::regclass AS waiting_table,
+       blocking.relation::regclass AS blocking_table,
+       waiting.pid AS waiting_pid,
+       blocking.pid AS blocking_pid,
+       waiting.mode AS waiting_mode,
+       blocking.mode AS blocking_mode,
+       waiting.GRANTED AS waiting_granted,
+       blocking.GRANTED AS blocking_granted,
+       waiting.TRANSACTION AS waiting_txn,
+       blocking.TRANSACTION AS blocking_txn
+FROM pg_locks AS waiting
+  LEFT JOIN pg_locks AS blocking
+         ON ( (waiting. "database" = blocking. "database"
+        AND (waiting.relation = blocking.relation
+         OR blocking.relation IS NULL
+         OR waiting.relation IS NULL))
+         OR waiting.TRANSACTION = blocking.TRANSACTION)
+WHERE 1 = 1
+AND   NOT waiting.GRANTED
+AND   waiting.pid <> blocking.pid
+ORDER BY blocking_granted,
+         waiting_granted,
+         blocking_pid,
+         waiting_pid;
+
+select pg_terminate_backend(PID);

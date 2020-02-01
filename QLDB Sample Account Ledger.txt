@@ -1,0 +1,158 @@
+1. Create Quantum Ledger called 'ctransactions'
+
+
+2. Create Tables
+
+CREATE TABLE Cardholder
+
+CREATE TABLE Log_Record
+
+CREATE TABLE Account
+
+
+3. Create Indexes to help speed up queries against each table
+
+CREATE INDEX ON Cardholder (CARD_NO)
+
+CREATE INDEX ON Log_Record (TRXN_ID)
+
+CREATE INDEX ON Account (ACCT_ID)
+
+
+4. Insert 1 Record into the Ledger table 'Account'. QLDB documents are stored in Amazon Ion format which is a Superset of JSON
+
+
+INSERT INTO Account
+ {
+'FirstName' : 'Shadab',
+'LastName' : 'Mohammad',
+'ACCT_ID' : 'AMZN10000001',
+'ACCTYPE' : 'Current',
+'Address' : '2000, 2 Park Street, CBD'
+}
+
+documentId
+   "7oOLmXPyHjXBSBCio76rJo"
+
+This is the document ID for this transaction
+   
+
+5. Create more records and change the first record from 'Current' to 'Saving' account
+
+Important :
+Because QLDB does not enforce schema, you can insert the same document into a table
+multiple times. Each insert statement commits a separate document entry to the journal, and
+QLDB assigns each document a unique ID.
+
+INSERT INTO Account
+ << {
+'FirstName' : 'Shadab',
+'LastName' : 'Mohammad',
+'ACCT_ID' : 'AMZN10000001',
+'ACCTYPE' : 'Saving',
+'Address' : '2000, 2 Park Street, CBD'
+},
+ {
+'FirstName' : 'William',
+'LastName' : 'Tell',
+'ACCT_ID' : 'AMZN10000002',
+'ACCTYPE' : 'Saving',
+'Address' : '2013, 29 Campbell PDE, Bondi'
+},
+ {
+'FirstName' : 'Chris',
+'LastName' : 'Wall',
+'ACCT_ID' : 'AMZN10000003',
+'ACCTYPE' : 'Current',
+'Address' : '2142, 15 Lane Cove, Marickville'
+} >>
+
+documentId
+	"L7S9f2cONhz1JQhj8Gj8bk"
+	"0007IXW5xSNDvq9gj3CZN8"
+	"JELcBIyjv8uKRHBfhbCvHp"
+
+
+6. Now let us check for all the changes done to this account using below query. We can check for all modifications made to the Account ID. Each modification or inser generated a unique hash we can be traced back to what that modification was
+
+
+SELECT ACCT_ID FROM Account AS a BY ACCT_ID
+WHERE a.ACCT_ID = 'AMZN10000001'
+
+ACCT_ID
+	"7oOLmXPyHjXBSBCio76rJo"
+	"L7S9f2cONhz1JQhj8Gj8bk"
+	
+As you can see there are 2 modifications to this record and we can verify what each of those modifications are
+	
+
+7. Check for the history for each new documentID for the Account
+	
+SELECT * FROM history(Account) AS h
+WHERE h.metadata.id = '7oOLmXPyHjXBSBCio76rJo'
+
+{
+  blockAddress: {
+    strandId: "KQrxUDo7jDX4scpbKkhEVZ",
+    sequenceNo: 26
+  },
+  hash: {{6HVuwag6GMEki+ZRFaMdqidROpKZmsTsYcmWiAMZdmw=}},
+  data: {
+    FirstName: "Shadab",
+    LastName: "Mohammad",
+    ACCT_ID: "AMZN10000001",
+    ACCTYPE: "Current",
+    Address: "2000, 2 Park Street, CBD"
+  },
+  metadata: {
+    id: "7oOLmXPyHjXBSBCio76rJo",
+    version: 0,
+    txTime: 2019-09-19T05:56:20.874Z,
+    txId: "2EOkrgLG2Xa7qBwEwnKzDJ"
+  }
+}
+
+
+SELECT * FROM history(Account) AS h
+WHERE h.metadata.id = 'L7S9f2cONhz1JQhj8Gj8bk'
+
+{
+  blockAddress: {
+    strandId: "KQrxUDo7jDX4scpbKkhEVZ",
+    sequenceNo: 41
+  },
+  hash: {{+qFvFfRx1pi9QOkotc9MAuAWs6Tw7jn3sZqlPpEjSDA=}},
+  data: {
+    FirstName: "Shadab",
+    LastName: "Mohammad",
+    ACCT_ID: "AMZN10000001",
+    ACCTYPE: "Saving",
+    Address: "2000, 2 Park Street, CBD"
+  },
+  metadata: {
+    id: "L7S9f2cONhz1JQhj8Gj8bk",
+    version: 0,
+    txTime: 2019-09-19T06:14:04.214Z,
+    txId: "2EOkrgMRCo4CBTUdJWSjmT"
+  }
+}
+
+Using the first hash we can see the account type was "Current", and after we modified the document and checked it with the 2nd hash it now shows "Saving". And we have a history of all modifications applied to that account to traverse back and check all modifications made to that Account ID.
+
+8. To Verify a Document Revision
+
+SELECT r.metadata.id, r.blockAddress
+FROM _ql_committed_Account AS r
+WHERE r.data.ACCT_ID = 'AMZN10000001'
+
+This is just the beginning of what can be possible to create in FinTech world. No more complex audit reports and expensive 3rd part tools which are an additional overhead to manage, but your database itself keeps a history of any changes made to a transaction or account or debit/credit card. 
+
+SELECT r.metadata.id, r.blockAddress
+FROM _ql_committed_Account AS r
+WHERE r.data.ACCT_ID = 'AMZN10000001'
+
+[1] Accessing Amazon QLDB Using the AWS CLI - https://docs.aws.amazon.com/qldb/latest/developerguide/Tools.CLI.html
+[2] botocore - https://github.com/boto/botocore/commit/f646b7ea334c9dcf94af6ad201a45886c48c2648
+[3] aws-cli - https://github.com/aws/aws-cli/commit/b3c7bd5a1b93d42ab1b75d99c33fc2b62b0dd6a4
+[4] Installing the AWS CLI - Installing the AWS CLI Using pip - https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html#install-tool-pip
+

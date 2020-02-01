@@ -1,0 +1,54 @@
+-- Query Performance Review --
+
+$ psql -h redshift-private-2a.c2nh0wlf4z7g.ap-southeast-2.redshift.amazonaws.com -p 5439 -U awsuser -f review_query_pf.sql testdb
+
+$ vim review_query_pf.sql
+
+
+\o caseXXX.txt
+\set vpattern 1678
+\qecho -- Query Text - stl_explain
+select * from stl_querytext where query = :vpattern;
+\qecho -- Explain plan - stl_explain
+select userid,query,nodeid,parentid,trim(plannode) plannode,trim(info) info from stl_explain where query = :vpattern;
+\qecho --Review WLM Queuing for above queries - stl_wlm_query
+SELECT TRIM(DATABASE) AS DB,
+       w.query,
+       SUBSTRING(q.querytxt,1,100) AS querytxt,
+       w.queue_start_time,
+       w.service_class AS class,
+       w.slot_count AS slots,
+       w.total_queue_time / 1000000 AS queue_seconds,
+       w.total_exec_time / 1000000 exec_seconds,
+       (w.total_queue_time + w.total_exec_time) / 1000000 AS total_seconds
+FROM stl_wlm_query w
+  LEFT JOIN stl_query q
+         ON q.query = w.query
+        AND q.userid = w.userid
+WHERE w.query = :vpattern
+--AND w.total_queue_time > 0
+ORDER BY w.total_queue_time DESC,
+         w.queue_start_time DESC;
+\qecho --Get information about commit stats - stl_commit_stats
+select startqueue,node, datediff(ms,startqueue,startwork) as queue_time, datediff(ms, startwork, endtime) as commit_time, queuelen
+from stl_commit_stats
+where xid in (select xid from stl_querytext where query = :vpattern)
+order by queuelen desc , queue_time desc;
+\qecho --Compile Time
+select userid, xid,  pid, query, segment, locus,
+datediff(ms, starttime, endtime) as duration, compile
+from svl_compile
+where query = :vpattern;
+--\qecho --Understand other operations within the same PID - svl_statementtext
+--select userid,xid,pid,label,starttime,endtime,sequence,type,trim(text) from svl_statementtext where pid in (select pid from stl_querytext where query = :vpattern);
+\qecho --Review query work - STL_PLAN_INFO
+select * from STL_PLAN_INFO where query = :vpattern;
+\qecho --Review query work - svl_query_report
+select * from svl_query_report where query = :vpattern order by segment,step,slice;
+\qecho --Review query work - svl_query_summary
+select * from svl_query_summary where query = :vpattern order by seg,step;
+\qecho -- Review alert
+select * from stl_alert_event_log where query = :vpattern;
+\qecho -- Review STL_ERROR
+select userid,process,recordtime,pid,errcode,trim(file),linenum,trim(context),trim(error) from stl_error where recordtime between (select starttime from stl_query where query = :vpattern) and (select endtime from stl_query where query = :vpattern);
+\q

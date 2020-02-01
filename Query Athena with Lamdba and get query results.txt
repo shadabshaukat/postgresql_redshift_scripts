@@ -1,0 +1,40 @@
+Querying Athena table; the query results are stored in S3 bucket
+
+import boto3
+
+REGION = 'ap-southeast-2'
+DATABASE = 'hubspot_datalake'
+TABLE = 'case6611691291_new'
+S3_BUCKET = 'spectrum-testing-shadadm/Case6611691291/'
+QUERY = 'SELECT * FROM hubspot_datalake.case6611691291_new limit 10;'
+
+client = boto3.client('athena', region_name=REGION)
+
+response = client.start_query_execution(
+QueryString=QUERY,
+QueryExecutionContext={
+'Database': DATABASE
+},
+ResultConfiguration={
+'OutputLocation': 's3://' + S3_BUCKET
+}
+)
+
+queryExecutionId = response['QueryExecutionId']
+
+# Initialize a variable
+queryExecutionStatus = ''
+queryResults = ''
+
+while(queryExecutionStatus not in ['SUCCEEDED', 'FAILED', 'CANCELLED']):
+            # print(queryExecutionStatus)
+            queryExecutionStatusData = client.get_query_execution(
+                QueryExecutionId=queryExecutionId
+            )
+            queryExecutionStatus = queryExecutionStatusData['QueryExecution']['Status']['State']
+else:
+            queryResults = client.get_query_results(
+                QueryExecutionId=queryExecutionId
+            )
+
+print(queryResults)
